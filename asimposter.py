@@ -8,6 +8,7 @@ import os
 def button_clicked(player_index, text):
     print(f"Button clicked for player {player_index}!")
     print(f"Entry received was {text.get()}")
+    print()
 
 def build_ui(window):
     window.title("Who's the imposter?")

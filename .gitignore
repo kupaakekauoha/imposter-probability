@@ -1,0 +1,13 @@
+# auto-generated Python bytecode files
+__pycache__/
+*.pyc
+
+# env variables
+venv/
+.venv/
+.env
+.env.*
+
+# vscode and temp files
+.vscode/
+.DS_Store

@@ -46,6 +46,7 @@ def build_ui(root):
 
     # Let column 1 expand horizontally
     root.columnconfigure(1, weight=1)
+    
 
     # Create rows for each player
     for i in range(NUM_PLAYERS):

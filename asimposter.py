@@ -3,14 +3,26 @@ from tkinter import ttk
 from openai import OpenAI
 from dotenv import load_dotenv
 import os
+import random
+import json
+
+PLAYER_ASSERTIONS = {}
+
+# Code that does statistical inference
+
 
 def button_clicked(player_index, text_input, listbox):
+    text = text_input.get()
+    if text == "":
+        return
     print(f"Button clicked for player {player_index}!")
     print(f"Entry received was {text_input.get()}")
-    listbox.insert(tk.END, f"{text_input.get()}")
-    
+    PLAYER_ASSERTIONS[player_index].append(text)
+    print(PLAYER_ASSERTIONS)
+    listbox.insert(tk.END, f"{len(PLAYER_ASSERTIONS[player_index])}: {text}") 
+    text_input.set("")
 
-def build_ui(window):
+def build_ui(window, topic):
     window.title("Who's the imposter?")
     window.geometry("800x500")
 
@@ -55,10 +67,11 @@ def build_ui(window):
     # Minimum shrinking size
     window.minsize(400, 300)
 
-    top_label = tk.Label(scroll_frame, text="The chosen category is ___", font=("Arial", 18, "bold"))
+
+    top_label = tk.Label(scroll_frame, text=f"The chosen category is {topic}", font=("Arial", 18, "bold"))
     top_label.grid(row=0, column=0, columnspan=3, sticky="ew", padx=10, pady=10)
 
-    for i in range(1, num_players + 1, 1):
+    for i in range(1, NUM_PLAYERS + 1, 1):
         # Create frame (like a div element) surrounding each player frame
         player_frame = tk.Frame(scroll_frame, borderwidth=2, relief="raised", padx=5, pady=5)
         player_frame.grid(row=i, column=0, padx=10, pady=10, sticky="ew")
@@ -93,25 +106,92 @@ def get_players():
                 print("Please enter a positive integer.")
                 continue  # ask again
 
+            for i in range(1, num + 1):
+                PLAYER_ASSERTIONS[i] = []
+            print(PLAYER_ASSERTIONS)
             return num  # valid → exit the loop and return value
         
         except ValueError:
             print("Please enter a valid integer.")
             # loop repeats automatically
-       
+    
+def get_game_info():
+    while True:
+        response = input("Would you like to choose the topic? y/n: ")
+        choice = response
+
+        if choice != 'y' and choice != 'n':
+            print("Please enter y/n.")
+            continue  # ask again
+
+        if choice == 'y':
+            topic = input("Enter in your desired topic: ")
+            print(topic)
+            return topic
+
+        if choice == 'n':
+            random_topics = [
+                'food',
+                'drinks',
+                'technology',
+                'sports',
+                'animals',
+                'college',
+                'occupations',
+                'plants',
+                'house items'
+            ]
+            topic = random.choice(random_topics)
+            return topic
+        
+def prepare_statistical_analysis(topic):
+    """
+    generated_r = client.responses.create(
+        model="gpt-5-mini",
+        input=f"Given the topic '{topic}', generate 50 common words that could possibly be the underlying secret word, no duplicates, and return them in JSON. It should be formatted as follows:\n{{\n  \"words\": [\"example1\", \"example2\"]\n}}"
+    )
+    text = generated_r.output[1].content[0].text
+    data = json.loads(text)
+    print(type(data))      # should be dict
+    print(data["words"])   # list of words
+    """
+    data = {
+       'words': [
+           'sofa', 'couch', 'chair', 'table', 'bed', 'mattress', 'pillow', 'blanket', 'quilt', 'duvet', 'sheet', 'rug', 'carpet', 'curtain', 'blinds', 'mirror', 'lamp', 'clock', 'picture', 'frame', 'shelf', 'bookshelf', 'cabinet', 'cupboard', 'drawer', 'wardrobe', 'dresser', 'nightstand', 'desk', 'television', 'fridge', 'refrigerator', 'stove', 'oven', 'microwave', 'toaster', 'blender', 'kettle', 'faucet', 'sink', 'dishwasher', 'pantry', 'toilet', 'bathtub', 'shower', 'towel', 'trashcan', 'broom', 'vacuum', 'plant'
+        ]
+    }
+    return data["words"]
+
 def main():
-    # Get amount of players that are playing the game from the user 
-    global num_players
-    num_players = get_players()
-    # Load API key from .env file
+    # Load API key from .env file, create openAI client
     load_dotenv()
     global API_KEY
     API_KEY = os.getenv("OPENAI_API_KEY")
+    global client
+    client = OpenAI(api_key=API_KEY)
+
+    # Get amount of players that are playing the game from the user 
+    global NUM_PLAYERS
+    NUM_PLAYERS = get_players()
+    
+    # Get the current game topic
+    topic = get_game_info()
+
+    # Prepare list of possible words for imposter
+    global WORD_LIST
+    WORD_LIST = prepare_statistical_analysis(topic)
+    
+    # Populate window and UI
     window = tk.Tk()
-    build_ui(window)
+    build_ui(window, topic)
+
+    """
+    test_win = tk.Toplevel(window)
+    test_win.title("Test Window")
+    tk.Label(test_win, text="Hello world").pack()
+    """
+    
     window.mainloop()
-
-
 
 if __name__ == "__main__":
     main()

@@ -7,9 +7,10 @@ import random
 import json
 
 PLAYER_ASSERTIONS = {}
+WORD_PROBABILITIES = {}
+DESIRED_GEN_COUNT = 50
 
 # Code that does statistical inference
-
 
 def button_clicked(player_index, text_input, listbox):
     text = text_input.get()
@@ -145,22 +146,70 @@ def get_game_info():
             return topic
         
 def prepare_statistical_analysis(topic):
-    """
+    
     generated_r = client.responses.create(
         model="gpt-5-mini",
-        input=f"Given the topic '{topic}', generate 50 common words that could possibly be the underlying secret word, no duplicates, and return them in JSON. It should be formatted as follows:\n{{\n  \"words\": [\"example1\", \"example2\"]\n}}"
+        input=f"Given the topic '{topic}', generate {DESIRED_GEN_COUNT} common words that could possibly be the underlying secret word, no duplicates, and return them in JSON. It should be formatted as follows:\n{{\n  \"words\": [\"example1\", \"example2\"]\n}}"
     )
     text = generated_r.output[1].content[0].text
     data = json.loads(text)
     print(type(data))      # should be dict
-    print(data["words"])   # list of words
+    list_words = data["words"]
+    print(list_words)   # list of words
     """
     data = {
        'words': [
            'sofa', 'couch', 'chair', 'table', 'bed', 'mattress', 'pillow', 'blanket', 'quilt', 'duvet', 'sheet', 'rug', 'carpet', 'curtain', 'blinds', 'mirror', 'lamp', 'clock', 'picture', 'frame', 'shelf', 'bookshelf', 'cabinet', 'cupboard', 'drawer', 'wardrobe', 'dresser', 'nightstand', 'desk', 'television', 'fridge', 'refrigerator', 'stove', 'oven', 'microwave', 'toaster', 'blender', 'kettle', 'faucet', 'sink', 'dishwasher', 'pantry', 'toilet', 'bathtub', 'shower', 'towel', 'trashcan', 'broom', 'vacuum', 'plant'
         ]
     }
-    return data["words"]
+    """
+    list_words = data["words"]
+
+    for word in list_words:
+        WORD_PROBABILITIES[word] = 1 / len(list_words)
+    print(WORD_PROBABILITIES)
+    return list_words
+
+# Buggy implementation
+def build_statistical_window(window, topic):
+    # Create second window
+    stat_win = tk.Toplevel(window)
+    stat_win.title(f"Word Likelihood Analysis – {topic}")
+    stat_win.minsize(400, 300)
+
+    # Allow the Treeview to expand with the window
+    stat_win.grid_rowconfigure(0, weight=1)
+    stat_win.grid_columnconfigure(0, weight=1)
+
+    # Define columns: Rank + Word + Probability
+    columns = ("rank", "word", "secretword")
+    tree = ttk.Treeview(stat_win, columns=columns, show="headings", height=15)
+
+    # Headings
+    tree.heading("rank", text="Rank")
+    tree.heading("word", text="Word")
+    tree.heading("secretword", text="P(secret word | data)")
+
+    # Column widths / alignment
+    tree.column("rank", width=50, anchor="center")
+    tree.column("word", width=150, anchor="w")
+    tree.column("secretword", width=150, anchor="e")
+
+    # Add scrollbar
+    scrollbar = ttk.Scrollbar(stat_win, orient="vertical", command=tree.yview)
+    tree.configure(yscrollcommand=scrollbar.set)
+
+    # Layout
+    tree.grid(row=0, column=0, sticky="nsew")
+    scrollbar.grid(row=0, column=1, sticky="ns")
+
+    # Populate with your WORD_LIST (for now: just rank in order, prob placeholder)
+    for idx, word in enumerate(WORD_LIST, start=1):
+        # third value is a placeholder; later you can plug in a real probability
+        tree.insert("", "end", values=(idx, word, WORD_PROBABILITIES[word]))
+
+    # Return the tree in case you want to update it later
+    return tree
 
 def main():
     # Load API key from .env file, create openAI client
@@ -184,13 +233,8 @@ def main():
     # Populate window and UI
     window = tk.Tk()
     build_ui(window, topic)
+    build_statistical_window(window, topic)
 
-    """
-    test_win = tk.Toplevel(window)
-    test_win.title("Test Window")
-    tk.Label(test_win, text="Hello world").pack()
-    """
-    
     window.mainloop()
 
 if __name__ == "__main__":

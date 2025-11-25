@@ -11,3 +11,4 @@ venv/
 # vscode and temp files
 .vscode/
 .DS_Store
+imposter.py

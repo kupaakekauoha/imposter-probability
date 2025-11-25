@@ -22,8 +22,6 @@ TEMPERATURE = 0.1 # for softmax, more confident probabilties since cosine simila
 SECRET_WORD = ""
 SECRET_EMBED = ""
 
-
-
 # Code that does statistical inference
 # We use cosine similarity with vector embeddings using openAI as an approximation for P(G = guess | S = secret word (one of the words in our prediction))
 def do_statistical_inference(guess):

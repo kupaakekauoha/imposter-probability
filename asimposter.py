@@ -5,19 +5,88 @@ from dotenv import load_dotenv
 import os
 import random
 import json
+from tqdm import tqdm
+import numpy as np
+import math 
 
 PLAYER_ASSERTIONS = {}
 WORD_PROBABILITIES = {}
-DESIRED_GEN_COUNT = 50
+DESIRED_GEN_COUNT = 30
+TEMPERATURE = 0.1 # for softmax, more confident probabilties since cosine similarity differs so little
 
 # Code that does statistical inference
+# We use cosine similarity with vector embeddings using openAI as an approximation for P(G = guess | S = secret word (one of the words in our prediction))
+def do_statistical_inference(guess):
+    guess_embed = client.embeddings.create(
+        input=f"{guess}",
+        model="text-embedding-3-small"
+    )
+    query_embedding = np.array(guess_embed.data[0].embedding)
+
+    query_norm = np.linalg.norm(query_embedding)
+    word_norms = np.linalg.norm(WORD_EMBEDDINGS, axis=1)
+    # LEFT is 2D, RIGHT is 1D
+    cos_similarities = np.matmul(WORD_EMBEDDINGS, query_embedding) / (query_norm * word_norms)
+    
+    print(cos_similarities)
+
+    # scale with TEMPERATURE value
+    scaled_cos = cos_similarities / TEMPERATURE
+
+    # use softmax formula to get likelihoods
+    likelihoods = np.exp(scaled_cos) / np.exp(scaled_cos).sum()
+    print(likelihoods)
+
+    priors = np.array(list(WORD_PROBABILITIES.values()))
+    print(priors)
+    print()
+
+    posterior_beliefs = (likelihoods * priors) / (likelihoods @ priors)
+    print(posterior_beliefs)
+
+    for word, prob in zip(WORD_LIST, posterior_beliefs):
+        WORD_PROBABILITIES[word] = prob
+    uncertainty = calculate_uncertainty()
+    refresh_stat_window(secondtree, uncertainty)
+    print(WORD_PROBABILITIES)
+
+def calculate_uncertainty():
+    uncertainty = 0
+    for word in WORD_PROBABILITIES:
+        uncertainty += math.log2(1 / WORD_PROBABILITIES[word]) * WORD_PROBABILITIES[word]
+    print(f"Uncertainty: {uncertainty}")
+    return uncertainty
+
+def refresh_stat_window(tree, uncertainty):
+    top_label.config(text=f"Current Uncertainty: {uncertainty}")
+
+    # Clear old rows
+    for item in tree.get_children():
+        tree.delete(item)
+    
+     # Sort words by current probability (posterior) descending
+    sorted_words = sorted(
+        WORD_LIST,
+        key=lambda word: WORD_PROBABILITIES[word],
+        reverse=True
+    )
+
+    # Repopulate
+    for idx, word in enumerate(sorted_words, start=1):
+        prob = WORD_PROBABILITIES[word]
+        tree.insert(
+            "",
+            "end",
+            values=(idx, word, f"{prob:.4f}")  # format to 4 decimal places
+        )
 
 def button_clicked(player_index, text_input, listbox):
     text = text_input.get()
     if text == "":
         return
     print(f"Button clicked for player {player_index}!")
-    print(f"Entry received was {text_input.get()}")
+    print(f"Entry received was {text}")
+    do_statistical_inference(text)
     PLAYER_ASSERTIONS[player_index].append(text)
     print(PLAYER_ASSERTIONS)
     listbox.insert(tk.END, f"{len(PLAYER_ASSERTIONS[player_index])}: {text}") 
@@ -127,8 +196,7 @@ def get_game_info():
 
         if choice == 'y':
             topic = input("Enter in your desired topic: ")
-            print(topic)
-            return topic
+            print(f"Topic chosen: {topic}")
 
         if choice == 'n':
             random_topics = [
@@ -143,30 +211,60 @@ def get_game_info():
                 'house items'
             ]
             topic = random.choice(random_topics)
-            return topic
         
-def prepare_statistical_analysis(topic):
-    
+        secret = input("What should be the secret word/phrase? ")
+        return topic, secret
+        
+def prepare_statistical_analysis(topic, secret):
     generated_r = client.responses.create(
         model="gpt-5-mini",
-        input=f"Given the topic '{topic}', generate {DESIRED_GEN_COUNT} common words that could possibly be the underlying secret word, no duplicates, and return them in JSON. It should be formatted as follows:\n{{\n  \"words\": [\"example1\", \"example2\"]\n}}"
+        input=f"Given the topic '{topic}', generate {DESIRED_GEN_COUNT} common words (or short phrases of 2 or three words) that could possibly be the underlying secret phrase, no duplicates, and return them in JSON. It should be formatted as follows:\n{{\n  \"words\": [\"example1\", \"example2\"]\n}}"
     )
     text = generated_r.output[1].content[0].text
     data = json.loads(text)
     print(type(data))      # should be dict
     list_words = data["words"]
     print(list_words)   # list of words
+
+    if secret not in list_words:
+        list_words.pop()
+        list_words.append(secret)
     """
     data = {
        'words': [
-           'sofa', 'couch', 'chair', 'table', 'bed', 'mattress', 'pillow', 'blanket', 'quilt', 'duvet', 'sheet', 'rug', 'carpet', 'curtain', 'blinds', 'mirror', 'lamp', 'clock', 'picture', 'frame', 'shelf', 'bookshelf', 'cabinet', 'cupboard', 'drawer', 'wardrobe', 'dresser', 'nightstand', 'desk', 'television', 'fridge', 'refrigerator', 'stove', 'oven', 'microwave', 'toaster', 'blender', 'kettle', 'faucet', 'sink', 'dishwasher', 'pantry', 'toilet', 'bathtub', 'shower', 'towel', 'trashcan', 'broom', 'vacuum', 'plant'
-        ]
+       'sofa', 'couch', 'chair', 'table', 'bed', 'mattress', 'pillow', 'blanket', 'quilt', 'duvet', 'sheet', 'rug', 'carpet', 'curtain', 'blinds', 'mirror', 'lamp', 'clock', 'picture', 'frame', 'shelf', 'bookshelf', 'cabinet', 'cupboard', 'drawer', 'wardrobe', 'dresser', 'nightstand', 'desk', 'television', 'fridge', 'refrigerator', 'stove', 'oven', 'microwave', 'toaster', 'blender', 'kettle', 'faucet', 'sink', 'dishwasher', 'pantry', 'toilet', 'bathtub', 'shower', 'towel', 'trashcan', 'broom', 'vacuum', 'plant'
+       ]
     }
     """
-    list_words = data["words"]
+    global WORD_PROBABILITIES
+    WORD_PROBABILITIES = {word: 1 / len(list_words) for word in list_words}
+    print(WORD_PROBABILITIES)
+    BATCH_SIZE = 256
+    MODEL_NAME = "text-embedding-3-small"
+    temp_embeddings_list = []
+    for i in tqdm(range(0, len(list_words), BATCH_SIZE)):
+        batch = list_words[i:i + BATCH_SIZE]
+        embeds = client.embeddings.create(
+            input=batch,
+            model=MODEL_NAME,
+        )
+        for embed in embeds.data:
+            temp_embeddings_list.append(embed.embedding)
 
-    for word in list_words:
+    """
+    for word in tqdm(list_words):
         WORD_PROBABILITIES[word] = 1 / len(list_words)
+        embed = client.embeddings.create(
+            input=f"{word}",
+            model="text-embedding-3-small"
+        )
+        temp_embeddings_list.append(embed.data[0].embedding) 
+    """
+    print(temp_embeddings_list)
+
+    global WORD_EMBEDDINGS
+    WORD_EMBEDDINGS = np.array(temp_embeddings_list)
+    print(WORD_EMBEDDINGS)
     print(WORD_PROBABILITIES)
     return list_words
 
@@ -177,8 +275,13 @@ def build_statistical_window(window, topic):
     stat_win.title(f"Word Likelihood Analysis – {topic}")
     stat_win.minsize(400, 300)
 
+    top_label_text = f"Current Uncertainty: ~"
+    global top_label
+    top_label = tk.Label(stat_win, text=top_label_text)
+    top_label.grid(row=0, column=0, columnspan=2, pady=(10, 5))
+
     # Allow the Treeview to expand with the window
-    stat_win.grid_rowconfigure(0, weight=1)
+    stat_win.grid_rowconfigure(1, weight=1)
     stat_win.grid_columnconfigure(0, weight=1)
 
     # Define columns: Rank + Word + Probability
@@ -200,7 +303,7 @@ def build_statistical_window(window, topic):
     tree.configure(yscrollcommand=scrollbar.set)
 
     # Layout
-    tree.grid(row=0, column=0, sticky="nsew")
+    tree.grid(row=1, column=0, sticky="nsew")
     scrollbar.grid(row=0, column=1, sticky="ns")
 
     # Populate with your WORD_LIST (for now: just rank in order, prob placeholder)
@@ -224,16 +327,17 @@ def main():
     NUM_PLAYERS = get_players()
     
     # Get the current game topic
-    topic = get_game_info()
+    topic, secret = get_game_info()
 
     # Prepare list of possible words for imposter
     global WORD_LIST
-    WORD_LIST = prepare_statistical_analysis(topic)
+    WORD_LIST = prepare_statistical_analysis(topic, secret)
     
     # Populate window and UI
     window = tk.Tk()
     build_ui(window, topic)
-    build_statistical_window(window, topic)
+    global secondtree
+    secondtree = build_statistical_window(window, topic)
 
     window.mainloop()
 

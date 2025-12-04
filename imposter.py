@@ -14,7 +14,7 @@ load_dotenv()
 API_KEY = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=API_KEY)
 DESIRED_GEN_COUNT = 100
-TEMPERATURE = 0.2
+TEMPERATURE = 0.1
 
 class GameState:
     def __init__(self):

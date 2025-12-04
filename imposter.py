@@ -13,7 +13,7 @@ import scipy.stats as stats
 load_dotenv()
 API_KEY = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=API_KEY)
-DESIRED_GEN_COUNT = 50
+DESIRED_GEN_COUNT = 100
 TEMPERATURE = 0.2
 
 class GameState:
@@ -218,10 +218,10 @@ def do_imposter_inference(p_index, text, game, ui_p):
     # Model as Gaussian distributions for simplicity
 
    # We expect non-imposters to have higher cosine similarity scores on average to the real secret word.
-    non_imp_hint = stats.norm(0.45, 0.15)
+    non_imp_hint = stats.norm(0.4, 0.15)
 
    # We expect imposters to have lower cosine similarity scores on average, with greater deviations 
-    imp_hint = stats.norm(0.22, 0.1)
+    imp_hint = stats.norm(0.24, 0.1)
     hint_embed = client.embeddings.create(
         input=text,
         model="text-embedding-3-small"

@@ -89,11 +89,11 @@ def get_game_info():
 
 def prepare_statistical_analysis(game):
     generated_r = client.responses.create(
-        model="gpt-5-mini",
+        model="gpt-5.1",
         input=f"Given the topic '{game.topic}', generate {DESIRED_GEN_COUNT} common words (or short phrases of 2 or three words) that could possibly be the underlying secret phrase, no duplicates, and return them in JSON. It should be formatted as follows:\n{{\n  \"words\": [\"example1\", \"example2\"]\n}}"
     )
     # Constructs the list of candidate words to make predictions on 
-    text = generated_r.output[1].content[0].text
+    text = generated_r.output[0].content[0].text
     data = json.loads(text)
     print(type(data))      # should be dict
     word_list = data["words"]
@@ -108,7 +108,7 @@ def prepare_statistical_analysis(game):
 
     BATCH_SIZE = 256
     MODEL_NAME = "text-embedding-3-small"
-
+    # Get embeddings synchronously using OpenAI vector embeddings
     temp_embeddings_list = []
     for i in tqdm(range(0, len(game.word_list), BATCH_SIZE)):
         batch = game.word_list[i:i + BATCH_SIZE]
@@ -220,14 +220,15 @@ def do_imposter_inference(p_index, text, game, ui_p):
    # We expect non-imposters to have higher cosine similarity scores on average to the real secret word.
     non_imp_hint = stats.norm(0.4, 0.15)
 
-   # We expect imposters to have lower cosine similarity scores on average, with greater deviations 
+   # We expect imposters to have lower cosine similarity scores on average, with lesser deviations 
     imp_hint = stats.norm(0.24, 0.1)
+    # Get an embedding vector for the hint using OpenAI's embedding model.
     hint_embed = client.embeddings.create(
         input=text,
         model="text-embedding-3-small"
     )
     hint_vec = np.array(hint_embed.data[0].embedding)
-   
+   # Cosine similarity between hint_vec and the precomputed secret_embed:
     hint_norm = np.linalg.norm(hint_vec) 
     secret_norm = np.linalg.norm(game.secret_embed)
     cosine_similarity = float(np.dot(hint_vec, game.secret_embed) / (hint_norm * secret_norm))
@@ -236,11 +237,13 @@ def do_imposter_inference(p_index, text, game, ui_p):
     unnormalized = {}
     for potential_imposter, prior_belief in game.imposter_probabilities.items():
         if potential_imposter == p_index:
+            # Likelihood that the observed similarity came from someone we condition on being the imposter
             likelihood = imp_hint.pdf(cosine_similarity)
         else:
+             # Likelihood that the observed similarity came from someone we condition on not being the imposter
             likelihood = non_imp_hint.pdf(cosine_similarity)
         unnormalized[potential_imposter] = likelihood * prior_belief 
-
+    # Normalize to get valid probabilities
     total = sum(unnormalized.values())
     for j in game.imposter_probabilities.keys():
         game.imposter_probabilities[j] = unnormalized[j] / total
@@ -250,6 +253,7 @@ def do_imposter_inference(p_index, text, game, ui_p):
     imp_uncertainty = calculate_imp_uncertainty(game)
     refresh_imp_window(game, ui_p, imp_uncertainty)
 
+# Calculate entropy from (inaccurate) probabilities
 def calculate_imp_uncertainty(game):
     uncertainty = 0
     for p in game.imposter_probabilities:
@@ -292,13 +296,15 @@ def do_statistical_inference(hint, game, ui_p):
     likelihoods = np.exp(scaled_cos) / np.exp(scaled_cos).sum()
 
     priors = np.array(list(game.word_probabilities.values()))
-
+    # Update our posterior beliefs 
     posterior_beliefs = (likelihoods * priors) / (likelihoods @ priors)
+    # Store updated probabilities back into the dictionary
     for word, prob in zip(game.word_list, posterior_beliefs):
         game.word_probabilities[word] = prob
     stat_uncertainty = calculate_stat_uncertainty(game)
     refresh_stat_window(game, ui_p, stat_uncertainty)
 
+# Calculate uncertainty
 def calculate_stat_uncertainty(game):
     uncertainty = 0
     for word in game.word_probabilities:
